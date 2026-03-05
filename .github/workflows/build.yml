@@ -1,0 +1,76 @@
+name: Build KDU (external repo)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (leave empty for latest tag)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    env:
+      BUILD_CONFIGURATION: Release
+      BUILD_PLATFORM: x64
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+
+    steps:
+      - name: Checkout this repo (workflow container)
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild (VS2022)
+        uses: microsoft/setup-msbuild@v1.3
+
+      - name: Clone KDU repository
+        run: |
+          git clone https://github.com/hfiref0x/KDU.git
+          cd KDU
+          git fetch --tags
+
+      - name: Checkout requested or latest tag
+        shell: pwsh
+        run: |
+          cd KDU
+
+          if ("${{ github.event.inputs.tag }}" -ne "") {
+              $tag = "${{ github.event.inputs.tag }}"
+              Write-Host "Using provided tag: $tag"
+          }
+          else {
+              $tag = git describe --tags (git rev-list --tags --max-count=1)
+              Write-Host "Using latest tag: $tag"
+          }
+
+          git checkout $tag
+          echo "KDU_TAG=$tag" >> $env:GITHUB_ENV
+
+      # Setup vcpkg
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: ${{ runner.temp }}/vcpkg
+          vcpkgJsonGlob: 'KDU/**/vcpkg.json'
+          runVcpkgInstall: true
+
+      - name: Integrate vcpkg
+        run: vcpkg integrate install
+
+      - name: Build KDU
+        run: >
+          msbuild KDU\Source\kdu.sln
+          /m
+          /p:Configuration=${{ env.BUILD_CONFIGURATION }}
+          /p:Platform=${{ env.BUILD_PLATFORM }}
+          /p:PlatformToolset=v143
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kdu-${{ env.KDU_TAG }}-x64-release
+          path: |
+            KDU\Source\Taigei\output\x64\Release\Taigei64.dll
+            KDU\Source\Tanikaze\output\x64\Release\drv64.dll
+            KDU\Source\Hamakaze\output\x64\Release\kdu.exe
