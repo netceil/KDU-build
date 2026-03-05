@@ -18,19 +18,21 @@ jobs:
       VCPKG_DEFAULT_TRIPLET: x64-windows
 
     steps:
-      - name: Checkout this repo (workflow container)
+      - name: Checkout workflow repo
         uses: actions/checkout@v4
 
-      - name: Setup MSBuild (VS2022)
+      - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v1.3
 
-      - name: Clone KDU repository
+      # Clone KDU
+      - name: Clone KDU
         run: |
           git clone https://github.com/hfiref0x/KDU.git
           cd KDU
           git fetch --tags
 
-      - name: Checkout requested or latest tag
+      # Checkout latest or requested tag
+      - name: Checkout tag
         shell: pwsh
         run: |
           cd KDU
@@ -47,17 +49,18 @@ jobs:
           git checkout $tag
           echo "KDU_TAG=$tag" >> $env:GITHUB_ENV
 
-      # Setup vcpkg
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: ${{ runner.temp }}/vcpkg
-          vcpkgJsonGlob: 'KDU/**/vcpkg.json'
-          runVcpkgInstall: true
+      # Install vcpkg (classic mode)
+      - name: Clone vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+          .\bootstrap-vcpkg.bat
 
-      - name: Integrate vcpkg
-        run: vcpkg integrate install
+      - name: Integrate vcpkg with MSBuild
+        run: |
+          .\vcpkg\vcpkg.exe integrate install
 
+      # Build
       - name: Build KDU
         run: >
           msbuild KDU\Source\kdu.sln
